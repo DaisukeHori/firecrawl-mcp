@@ -1,0 +1,26 @@
+{
+  "name": "firecrawl-mcp",
+  "version": "1.0.0",
+  "description": "Firecrawl MCP Server for Claude — self-hosted Firecrawl を MCP 経由で利用",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "mcp-handler": "^1.0.7",
+    "next": "^15",
+    "react": "^19",
+    "react-dom": "^19",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}
