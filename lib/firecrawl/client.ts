@@ -12,10 +12,16 @@ import type {
   CrawlRequest,
   CrawlStartResponse,
   CrawlStatusResponse,
+  CrawlErrorsResponse,
+  ActiveCrawlsResponse,
   MapRequest,
   MapResponse,
   BatchScrapeRequest,
   BatchScrapeStartResponse,
+  SearchRequest,
+  SearchResponse,
+  ExtractRequest,
+  ExtractResponse,
 } from "./types";
 
 const MAX_RETRIES = 3;
@@ -40,7 +46,6 @@ function getBaseUrl(): string {
       "FIRECRAWL_API_URL が設定されていません。環境変数を確認してください。"
     );
   }
-  // 末尾スラッシュを除去
   return url.replace(/\/+$/, "");
 }
 
@@ -67,7 +72,6 @@ async function handleResponse<T>(response: Response): Promise<T> {
     throw new FirecrawlError(response.status, message);
   }
 
-  // 204 No Content
   if (response.status === 204) {
     return {} as T;
   }
@@ -91,7 +95,6 @@ async function fetchWithRetry<T>(
       });
       clearTimeout(timeoutId);
 
-      // 429 Rate Limit → リトライ
       if (response.status === 429 && attempt < retries) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt);
         await new Promise((r) => setTimeout(r, delay));
@@ -120,7 +123,7 @@ async function fetchWithRetry<T>(
   throw new FirecrawlError(503, "リトライ回数の上限に達しました");
 }
 
-// ── Public API ──
+// ── Scrape ──
 
 export async function scrape(params: ScrapeRequest): Promise<ScrapeResponse> {
   return fetchWithRetry<ScrapeResponse>(
@@ -132,6 +135,8 @@ export async function scrape(params: ScrapeRequest): Promise<ScrapeResponse> {
     }
   );
 }
+
+// ── Crawl ──
 
 export async function startCrawl(params: CrawlRequest): Promise<CrawlStartResponse> {
   return fetchWithRetry<CrawlStartResponse>(
@@ -164,6 +169,28 @@ export async function cancelCrawl(crawlId: string): Promise<{ success: boolean }
   );
 }
 
+export async function getCrawlErrors(crawlId: string): Promise<CrawlErrorsResponse> {
+  return fetchWithRetry<CrawlErrorsResponse>(
+    `${getBaseUrl()}/v1/crawl/${encodeURIComponent(crawlId)}/errors`,
+    {
+      method: "GET",
+      headers: getHeaders(),
+    }
+  );
+}
+
+export async function getActiveCrawls(): Promise<ActiveCrawlsResponse> {
+  return fetchWithRetry<ActiveCrawlsResponse>(
+    `${getBaseUrl()}/v1/crawl/active`,
+    {
+      method: "GET",
+      headers: getHeaders(),
+    }
+  );
+}
+
+// ── Map ──
+
 export async function mapSite(params: MapRequest): Promise<MapResponse> {
   return fetchWithRetry<MapResponse>(
     `${getBaseUrl()}/v1/map`,
@@ -174,6 +201,8 @@ export async function mapSite(params: MapRequest): Promise<MapResponse> {
     }
   );
 }
+
+// ── Batch Scrape ──
 
 export async function startBatchScrape(
   params: BatchScrapeRequest
@@ -196,6 +225,56 @@ export async function getBatchScrapeStatus(
     {
       method: "GET",
       headers: getHeaders(),
+    }
+  );
+}
+
+export async function cancelBatchScrape(
+  batchId: string
+): Promise<{ success: boolean }> {
+  return fetchWithRetry<{ success: boolean }>(
+    `${getBaseUrl()}/v1/batch/scrape/${encodeURIComponent(batchId)}`,
+    {
+      method: "DELETE",
+      headers: getHeaders(),
+    }
+  );
+}
+
+export async function getBatchScrapeErrors(
+  batchId: string
+): Promise<CrawlErrorsResponse> {
+  return fetchWithRetry<CrawlErrorsResponse>(
+    `${getBaseUrl()}/v1/batch/scrape/${encodeURIComponent(batchId)}/errors`,
+    {
+      method: "GET",
+      headers: getHeaders(),
+    }
+  );
+}
+
+// ── Search ──
+
+export async function search(params: SearchRequest): Promise<SearchResponse> {
+  return fetchWithRetry<SearchResponse>(
+    `${getBaseUrl()}/v1/search`,
+    {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(params),
+    }
+  );
+}
+
+// ── Extract ──
+
+export async function extract(params: ExtractRequest): Promise<ExtractResponse> {
+  return fetchWithRetry<ExtractResponse>(
+    `${getBaseUrl()}/v1/extract`,
+    {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(params),
     }
   );
 }

@@ -91,6 +91,32 @@ export interface CrawlStatusResponse {
   next?: string;
 }
 
+export interface CrawlErrorItem {
+  id: string;
+  timestamp: string;
+  url: string;
+  error: string;
+}
+
+export interface CrawlErrorsResponse {
+  success: boolean;
+  errors?: CrawlErrorItem[];
+  error?: string;
+}
+
+export interface ActiveCrawlItem {
+  id: string;
+  url: string;
+  status: string;
+  createdAt?: string;
+}
+
+export interface ActiveCrawlsResponse {
+  success: boolean;
+  crawls?: ActiveCrawlItem[];
+  error?: string;
+}
+
 // ── Map ──
 
 export interface MapRequest {
@@ -122,5 +148,49 @@ export interface BatchScrapeStartResponse {
   success: boolean;
   id?: string;
   url?: string;
+  error?: string;
+}
+
+// ── Search ──
+
+export interface SearchResult {
+  url: string;
+  title?: string;
+  description?: string;
+  markdown?: string;
+}
+
+export interface SearchRequest {
+  query: string;
+  limit?: number;
+  scrapeOptions?: {
+    formats?: ScrapeFormat[];
+    onlyMainContent?: boolean;
+  };
+}
+
+export interface SearchResponse {
+  success: boolean;
+  data?: SearchResult[];
+  error?: string;
+}
+
+// ── Extract ──
+
+export interface ExtractRequest {
+  urls: string[];
+  prompt?: string;
+  schema?: Record<string, unknown>;
+  enableWebSearch?: boolean;
+  ignoreSitemap?: boolean;
+  includeSubdomains?: boolean;
+  showSources?: boolean;
+}
+
+export interface ExtractResponse {
+  success: boolean;
+  data?: Record<string, unknown>;
+  extractId?: string;
+  sources?: Record<string, string[]>;
   error?: string;
 }
