@@ -34,16 +34,26 @@ Returns:
     async (params) => {
       try {
         const result = await cancelBatchScrape(params.batch_id);
+        if (result.success) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `バッチジョブ ${params.batch_id} をキャンセルしました。`,
+              },
+            ],
+          };
+        }
+        // reason フィールドで詳細を返す
+        const reason = result.reason || "ジョブIDを確認してください。";
         return {
           content: [
             {
               type: "text" as const,
-              text: result.success
-                ? `バッチジョブ ${params.batch_id} をキャンセルしました。`
-                : `キャンセル失敗。ジョブIDを確認してください。`,
+              text: `キャンセル失敗: ${reason}`,
             },
           ],
-          isError: !result.success,
+          isError: true,
         };
       } catch (error) {
         const msg =

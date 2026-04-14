@@ -123,6 +123,118 @@ async function fetchWithRetry<T>(
   throw new FirecrawlError(503, "リトライ回数の上限に達しました");
 }
 
+/**
+ * /errors エンドポイント用の fetch
+ * self-hosted Firecrawl はエラーが0件の場合に 404 や非標準レスポンスを返すことがあるため、
+ * その場合は空のエラーリストとして正常応答を返す。
+ */
+async function fetchErrorsEndpoint(
+  url: string
+): Promise<CrawlErrorsResponse> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: getHeaders(),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    // 404 / 422 / 400 → エラーなしとして扱う
+    if (response.status === 404 || response.status === 422 || response.status === 400) {
+      return { success: true, errors: [] };
+    }
+
+    if (!response.ok) {
+      let message = response.statusText;
+      try {
+        const errorBody = await response.json();
+        message = errorBody.error || errorBody.message || message;
+      } catch {
+        // ignore
+      }
+      return { success: false, error: `HTTP ${response.status}: ${message}` };
+    }
+
+    if (response.status === 204) {
+      return { success: true, errors: [] };
+    }
+
+    const body = await response.json();
+
+    // API が配列を直接返す場合に対応
+    if (Array.isArray(body)) {
+      return { success: true, errors: body };
+    }
+
+    // success フィールドがない場合のフォールバック
+    if (body.success === undefined) {
+      return {
+        success: true,
+        errors: body.errors ?? body.data ?? [],
+      };
+    }
+
+    return body as CrawlErrorsResponse;
+  } catch (error) {
+    // ネットワークエラー等
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `接続エラー: ${msg}` };
+  }
+}
+
+/**
+ * DELETE エンドポイント用の fetch（キャンセル）
+ * 完了済みジョブに対する DELETE は 404/409 を返すことがあるため、
+ * ステータスコード別に判別したメッセージを返す。
+ */
+async function fetchCancelEndpoint(
+  url: string
+): Promise<{ success: boolean; reason?: string }> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: getHeaders(),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (response.status === 404) {
+      return { success: false, reason: "ジョブが見つかりません。IDを確認するか、既に完了・期限切れの可能性があります。" };
+    }
+
+    if (response.status === 409) {
+      return { success: false, reason: "ジョブは既に完了またはキャンセル済みです。" };
+    }
+
+    if (!response.ok) {
+      let message = response.statusText;
+      try {
+        const errorBody = await response.json();
+        message = errorBody.error || errorBody.message || message;
+      } catch {
+        // ignore
+      }
+      return { success: false, reason: `HTTP ${response.status}: ${message}` };
+    }
+
+    if (response.status === 204) {
+      return { success: true };
+    }
+
+    const body = await response.json();
+    return { success: body.success ?? true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, reason: `接続エラー: ${msg}` };
+  }
+}
+
 // ── Scrape ──
 
 export async function scrape(params: ScrapeRequest): Promise<ScrapeResponse> {
@@ -159,23 +271,15 @@ export async function getCrawlStatus(crawlId: string): Promise<CrawlStatusRespon
   );
 }
 
-export async function cancelCrawl(crawlId: string): Promise<{ success: boolean }> {
-  return fetchWithRetry<{ success: boolean }>(
-    `${getBaseUrl()}/v1/crawl/${encodeURIComponent(crawlId)}`,
-    {
-      method: "DELETE",
-      headers: getHeaders(),
-    }
+export async function cancelCrawl(crawlId: string): Promise<{ success: boolean; reason?: string }> {
+  return fetchCancelEndpoint(
+    `${getBaseUrl()}/v1/crawl/${encodeURIComponent(crawlId)}`
   );
 }
 
 export async function getCrawlErrors(crawlId: string): Promise<CrawlErrorsResponse> {
-  return fetchWithRetry<CrawlErrorsResponse>(
-    `${getBaseUrl()}/v1/crawl/${encodeURIComponent(crawlId)}/errors`,
-    {
-      method: "GET",
-      headers: getHeaders(),
-    }
+  return fetchErrorsEndpoint(
+    `${getBaseUrl()}/v1/crawl/${encodeURIComponent(crawlId)}/errors`
   );
 }
 
@@ -231,25 +335,17 @@ export async function getBatchScrapeStatus(
 
 export async function cancelBatchScrape(
   batchId: string
-): Promise<{ success: boolean }> {
-  return fetchWithRetry<{ success: boolean }>(
-    `${getBaseUrl()}/v1/batch/scrape/${encodeURIComponent(batchId)}`,
-    {
-      method: "DELETE",
-      headers: getHeaders(),
-    }
+): Promise<{ success: boolean; reason?: string }> {
+  return fetchCancelEndpoint(
+    `${getBaseUrl()}/v1/batch/scrape/${encodeURIComponent(batchId)}`
   );
 }
 
 export async function getBatchScrapeErrors(
   batchId: string
 ): Promise<CrawlErrorsResponse> {
-  return fetchWithRetry<CrawlErrorsResponse>(
-    `${getBaseUrl()}/v1/batch/scrape/${encodeURIComponent(batchId)}/errors`,
-    {
-      method: "GET",
-      headers: getHeaders(),
-    }
+  return fetchErrorsEndpoint(
+    `${getBaseUrl()}/v1/batch/scrape/${encodeURIComponent(batchId)}/errors`
   );
 }
 

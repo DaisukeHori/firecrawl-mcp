@@ -1,12 +1,10 @@
 /**
- * firecrawl_crawl_status — クロールジョブの進捗・結果を取得
+ * firecrawl_crawl_status — クロールジョブの進捗・結果取得 / キャンセル
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getCrawlStatus, cancelCrawl, FirecrawlError } from "@/lib/firecrawl/client";
-
-const CHARACTER_LIMIT = 80000;
 
 const InputSchema = {
   crawl_id: z
@@ -23,7 +21,7 @@ export function registerCrawlStatus(server: McpServer): void {
   server.registerTool(
     "firecrawl_crawl_status",
     {
-      title: "クロールジョブの状態確認",
+      title: "クロールジョブの進捗・結果を取得",
       description: `firecrawl_crawl で開始したクロールジョブの進捗と結果を取得する。
 ジョブが完了していれば、クロールされた全ページのデータが返る。
 
@@ -33,10 +31,10 @@ Returns:
   status: "scraping" | "completed" | "failed" | "cancelled"
   completed: 完了ページ数
   total: 全ページ数
-  data: スクレイピング済みページの配列（完了時）`,
+  data: スクレイピング済みページの配列(完了時)`,
       inputSchema: InputSchema,
       annotations: {
-        readOnlyHint: true,
+        readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: false,
@@ -44,23 +42,35 @@ Returns:
     },
     async (params) => {
       try {
+        // ── キャンセル ──
         if (params.action === "cancel") {
           const result = await cancelCrawl(params.crawl_id);
+          if (result.success) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `クロールジョブ ${params.crawl_id} をキャンセルしました。`,
+                },
+              ],
+            };
+          }
+          const reason = result.reason || "ジョブIDを確認してください。";
           return {
             content: [
               {
                 type: "text" as const,
-                text: result.success
-                  ? `クロールジョブ ${params.crawl_id} をキャンセルしました。`
-                  : `キャンセル失敗。ジョブIDを確認してください。`,
+                text: `キャンセル失敗: ${reason}`,
               },
             ],
+            isError: true,
           };
         }
 
+        // ── ステータス確認 ──
         const result = await getCrawlStatus(params.crawl_id);
 
-        if (!result.success) {
+        if (!result.success && !result.status) {
           return {
             content: [
               {
@@ -76,50 +86,44 @@ Returns:
           `## クロールジョブ: ${params.crawl_id}`,
           ``,
           `- ステータス: **${result.status}**`,
-          `- 進捗: ${result.completed ?? 0} / ${result.total ?? "?"} ページ`,
+          `- 進捗: ${result.completed ?? "?"} / ${result.total ?? "?"} ページ`,
         ];
 
         if (result.expiresAt) {
           lines.push(`- データ有効期限: ${result.expiresAt}`);
         }
 
-        // 完了時はデータを返す
-        if (result.status === "completed" && result.data && result.data.length > 0) {
-          lines.push(``, `---`, ``, `## 取得結果（${result.data.length}ページ）`, ``);
-
-          let totalChars = lines.join("\n").length;
-
-          for (const page of result.data) {
-            const title = page.metadata?.title || page.metadata?.sourceURL || "Untitled";
-            const url = page.metadata?.sourceURL || "";
-            const content = page.markdown || page.html || "(コンテンツなし)";
-
-            const pageBlock = [
-              `### ${title}`,
-              url ? `> ${url}` : "",
-              ``,
-              content,
-              ``,
-              `---`,
-              ``,
-            ]
-              .filter(Boolean)
-              .join("\n");
-
-            if (totalChars + pageBlock.length > CHARACTER_LIMIT) {
-              lines.push(
-                `\n⚠️ 出力が ${CHARACTER_LIMIT} 文字を超えたため、残り ${result.data.length - lines.filter((l) => l.startsWith("### ")).length} ページは省略されました。`
-              );
-              break;
-            }
-
-            lines.push(pageBlock);
-            totalChars += pageBlock.length;
-          }
+        if (result.next) {
+          lines.push(``);
+          lines.push(`次のページ: ${result.next}`);
         }
 
-        if (result.next) {
-          lines.push(`\n次のページ: ${result.next}`);
+        if (
+          result.status === "completed" &&
+          result.data &&
+          result.data.length > 0
+        ) {
+          lines.push(``);
+          lines.push(`---`);
+          lines.push(``);
+          lines.push(
+            `## 取得結果（${result.data.length}ページ）`
+          );
+          lines.push(``);
+
+          for (const page of result.data) {
+            const title =
+              page.metadata?.title || page.metadata?.sourceURL || "Untitled";
+            const sourceUrl = page.metadata?.sourceURL || "";
+            lines.push(`### ${title}`);
+            if (sourceUrl) {
+              lines.push(`> ${sourceUrl}`);
+            }
+            if (page.markdown) {
+              lines.push(page.markdown.slice(0, 1000));
+            }
+            lines.push(`---`);
+          }
         }
 
         return {
