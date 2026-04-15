@@ -1,0 +1,89 @@
+# MCP Doctor Auto-Fix + Auto-Merge
+#
+# mcp-doctor ラベル付き Issue が作成されたら:
+# 1. Claude Code が Issue を読み、コード修正、PR 作成
+# 2. PR のビルドチェック通過後、自動マージ
+#
+# 必要な Secrets:
+#   CLAUDE_CODE_OAUTH_TOKEN - claude setup-token で取得（Max サブスク内）
+
+name: MCP Doctor - Auto Fix
+
+on:
+  issues:
+    types: [opened, labeled]
+  pull_request:
+    types: [opened, synchronize, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  # ── Issue → Claude Code で修正 → PR 作成 ──
+  auto-fix:
+    if: >-
+      github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name, 'mcp-doctor')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            このIssueの内容に従って修正してください。
+            CLAUDE.md を読んでプロジェクト規約を理解し、
+            必要なコード修正を行い、ビルド確認（npm run build）後、
+            変更をコミットしてPRを作成してください。
+            PRには mcp-doctor ラベルを付けてください。
+
+            重要ルール:
+            - コミットメッセージ、PRタイトル、PR本文、コメントはすべて日本語で記述すること
+            - PRタイトル例: 「修正: HubSpot API v5 対応」「修正: ヘルスチェック障害対応」
+          claude_args: "--max-turns 100 --dangerously-skip-permissions --model claude-opus-4-6"
+
+  # ── PR ビルドチェック → 自動マージ ──
+  auto-merge:
+    if: >-
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'mcp-doctor')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Build check
+        run: npm run build
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Auto-merge PR
+        if: success()
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --squash \
+            --auto \
+            --delete-branch \
+            --subject "fix: mcp-doctor auto-fix (#${{ github.event.pull_request.number }})"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
