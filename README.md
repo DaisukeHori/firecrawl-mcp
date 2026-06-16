@@ -52,7 +52,7 @@ Vercel上のNext.jsアプリがMCPプロトコルを処理し、セルフホス�
 | `firecrawl_map` | サイトの全URL一覧を取得（sitemap + リンク探索） |
 | `firecrawl_extract` | LLMでページから構造化データ（JSON）を抽出 |
 
-## クイックスタート（3ステップ）
+## クイックスタート（4ステップ）
 
 ### ステップ1: セルフホスト Firecrawl を用意
 
@@ -65,6 +65,68 @@ docker compose up -d
 ```
 
 デフォルトで `http://localhost:3002` で起動します。
+
+> ⚠️ **重要:** `http://localhost:3002` のままでは、Vercel 上の MCP サーバーから接続できません。次の「ステップ1.5」を必ず実行してください。
+
+### ステップ1.5: Firecrawl を MCP サーバーから到達可能にする
+
+Vercel 上の MCP サーバーはインターネット越しに Firecrawl API を呼び出します。そのため、**ローカルホストのままでは接続できず、公開 URL（HTTPS 推奨）が必要です**。
+
+以下のいずれかの方法で公開 URL を用意してください。
+
+#### A. クラウドサーバー / VPS にデプロイする（本番向け）
+
+EC2、DigitalOcean、Hetzner などに Firecrawl を起動し、ドメインまたはパブリック IP を割り当てます。
+
+```bash
+# Firecrawl 側 .env の例
+HOST=0.0.0.0
+PORT=3002
+USE_DB_AUTHENTICATION=false
+BULL_AUTH_KEY=your-strong-password
+```
+
+Let's Encrypt などで HTTPS 化し、以下のように到達確認します。
+
+```bash
+curl https://firecrawl.yourdomain.com/test
+```
+
+#### B. Cloudflare Tunnel でローカル Firecrawl を公開する（開発・検証向け）
+
+ローカルマシンで動いている Firecrawl を、安全にインターネットに公開できます。
+
+```bash
+cloudflared tunnel --url http://localhost:3002
+```
+
+出力された `https://xxxxx.trycloudflare.com` を `FIRECRAWL_API_URL` に設定します。
+
+#### C. ngrok で一時的に公開する（開発・検証向け）
+
+```bash
+ngrok http 3002
+```
+
+出力された `https://xxxxx.ngrok-free.app` を使用します。
+
+---
+
+#### 接続情報の確認
+
+MCP サーバーに設定する前に、以下が必須です。
+
+| 項目 | 説明 |
+|:--|:--|
+| 公開 URL | Vercel から到達可能な `https://...` |
+| API キー | Firecrawl で認証が不要なら空欄可 |
+| HTTPS | Vercel から HTTP を呼ぶと Mixed Content 等で失敗する可能性があります |
+
+確認コマンド：
+
+```bash
+curl https://your-firecrawl.example.com/test
+```
 
 ### ステップ2: MCP サーバーをデプロイ
 
@@ -115,8 +177,8 @@ claude mcp add --transport http firecrawl https://your-firecrawl-mcp.vercel.app/
 
 | 変数 | 必須 | 説明 |
 |:--|:--|:--|
-| `FIRECRAWL_API_URL` | ✅ | セルフホスト Firecrawl の URL（例: `https://firecrawl.example.com`） |
-| `FIRECRAWL_API_KEY` | △ | Firecrawl API キー（セルフホストで認証不要なら空可） |
+| `FIRECRAWL_API_URL` | ✅ | セルフホスト Firecrawl の URL（例: `https://firecrawl.example.com`）。末尾の `/` は不要です。 |
+| `FIRECRAWL_API_KEY` | △ | Firecrawl API キー（`USE_DB_AUTHENTICATION=false` のセルフホストでは不要） |
 | `MCP_API_KEY` | ✅ | MCP サーバーへのアクセスを制限する認証キー |
 
 ## 使用例
@@ -154,6 +216,12 @@ AI: [firecrawl_extract]
 - `MCP_API_KEY` で不正アクセスを防止
 
 ## FAQ
+
+**Q: Vercel デプロイ後、`FIRECRAWL_API_URL=http://localhost:3002` で動かない**
+→ `localhost` は Vercel 上のサーバーから到達できません。Cloudflare Tunnel や自前サーバーの公開 URL を使用してください。詳細は[ステップ1.5](#ステップ15-firecrawl-を-mcp-サーバーから到達可能にする)を参照してください。
+
+**Q: `Firecrawl サーバーに接続できません` と表示される**
+→ Firecrawl 側の `.env` で `HOST=0.0.0.0` になっているか、ファイアウォール・ポートが開いているか確認してください。
 
 **Q: Firecrawlクラウド版でも使える？**
 → はい。`FIRECRAWL_API_URL=https://api.firecrawl.dev` に設定し、`FIRECRAWL_API_KEY` にクラウドのAPIキーを入れてください。
