@@ -63,6 +63,7 @@ export interface CrawlRequest {
   allowBackwardLinks?: boolean;
   allowExternalLinks?: boolean;
   ignoreSitemap?: boolean;
+  ignoreRobotsTxt?: boolean;
   scrapeOptions?: {
     formats?: ScrapeFormat[];
     includeTags?: string[];

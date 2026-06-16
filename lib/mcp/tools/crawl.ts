@@ -45,6 +45,10 @@ const InputSchema = {
     .boolean()
     .default(false)
     .describe("true の場合、sitemap.xml を無視する"),
+  ignoreRobotsTxt: z
+    .boolean()
+    .default(false)
+    .describe("true の場合、robots.txt を無視する"),
   formats: z
     .array(z.enum(["markdown", "html", "rawHtml", "links"]))
     .default(["markdown"])
@@ -92,6 +96,7 @@ Returns:
           allowBackwardLinks: params.allowBackwardLinks,
           allowExternalLinks: params.allowExternalLinks,
           ignoreSitemap: params.ignoreSitemap,
+          ignoreRobotsTxt: params.ignoreRobotsTxt,
           scrapeOptions: {
             formats: params.formats,
             onlyMainContent: params.onlyMainContent,
