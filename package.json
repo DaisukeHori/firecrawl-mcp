@@ -10,7 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "mcp-handler": "^1.0.7",
     "next": "^15",
     "react": "^19",
